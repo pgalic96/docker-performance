@@ -12,10 +12,13 @@ from dxf import *
 
 app = Bottle()
 
+def auth(dxf, response):
+    dxf.authenticate(os.environ.get('REGISTRY_USERNAME'), os.environ.get('REGISTRY_PASSWORD'), response=response)
+
 def send_requests(registry, wait, push_rand, requests, startTime, q):
     dxf = []
     for reg in registry:
-        dxf.append(DXF(reg, 'test_repo', insecure=True))
+        dxf.append(DXF(reg, os.environ.get('REGISTRY_REPO'), auth))
     results = []
     fname = str(os.getpid())
     f = open(fname, 'wb')
