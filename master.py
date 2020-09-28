@@ -343,9 +343,9 @@ def main():
                 if inputs['warmup']['random'] is True:
                     generate_random = True
 
-    registries = [os.environ.get('REGISTRY_ADDRESS')]
-    # if 'registry' in inputs:
-    #     registries.extend(inputs['registry'])
+    registries = []
+    if 'registry' in inputs:
+        registries.extend(inputs['registry'])
 
     json_data = get_requests(trace_files, limit_type, limit)
 

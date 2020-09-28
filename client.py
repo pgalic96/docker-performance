@@ -17,8 +17,7 @@ def auth(dxf, response):
 
 def send_requests(registry, wait, push_rand, requests, startTime, q):
     dxf = []
-    for reg in registry:
-        dxf.append(DXF(os.environ.get('REGISTRY_URL'), os.environ.get('REGISTRY_REPO'), auth))
+    dxf.append(DXF(os.environ.get('REGISTRY_URL'), os.environ.get('REGISTRY_REPO'), auth))
     results = []
     fname = str(os.getpid())
     f = open(fname, 'wb')
