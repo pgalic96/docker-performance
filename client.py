@@ -9,15 +9,16 @@ import socket
 import random
 from multiprocessing import Process, Queue
 from dxf import *
+from decouple import config
 
 app = Bottle()
 
 def auth(dxf, response):
-    dxf.authenticate(os.environ.get('REGISTRY_USERNAME'), os.environ.get('REGISTRY_PASSWORD'), response=response)
+    dxf.authenticate(config('REGISTRY_USERNAME'), config('REGISTRY_PASSWORD'), response=response)
 
 def send_requests(registry, wait, push_rand, requests, startTime, q):
     dxf = []
-    dxf.append(DXF(os.environ.get('REGISTRY_URL'), os.environ.get('REGISTRY_REPO'), auth))
+    dxf.append(DXF(config('REGISTRY_URL'), config('REGISTRY_REPO'), auth))
     results = []
     fname = str(os.getpid())
     f = open(fname, 'wb')
