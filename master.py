@@ -14,6 +14,7 @@ from dxf import *
 from multiprocessing import Process, Queue
 import importlib
 import hash_ring
+from decouple import config
 
 ## get requests
 def send_request_get(client, payload):
@@ -22,9 +23,12 @@ def send_request_get(client, payload):
     headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
     s.post("http://" + str(client) + "/up", data=json.dumps(payload), headers=headers, timeout=100)
 
+def auth(dxf, response):
+    dxf.authenticate(config('REGISTRY_USERNAME'), config('REGISTRY_PASSWORD'), response=response)
+
 def send_warmup_thread(requests, q, registry, generate_random):
     trace = {}
-    dxf = DXF(registry, 'test_repo', insecure=True)
+    dxf = DXF(config('REGISTRY_URL'), config('REGISTRY_REPO'), auth)
     f = open(str(os.getpid()), 'wb')
     f.write('\0')
     f.close()
