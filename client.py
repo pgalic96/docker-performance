@@ -14,7 +14,7 @@ from decouple import config
 app = Bottle()
 
 def auth(dxf, response):
-    dxf.authenticate(config('REGISTRY_USERNAME'), config('REGISTRY_PASSWORD'), response=response)
+    dxf.authenticate(config('REGISTRY_USERNAME'), config('REGISTRY_PASSWORD'), response=response, actions=['*'])
 
 def send_requests(registry, wait, push_rand, requests, startTime, q):
     dxf = []
@@ -29,7 +29,7 @@ def send_requests(registry, wait, push_rand, requests, startTime, q):
         start = startTime + r['delay']
         onTime = 'no'
         if r['method'] == 'GET':
-#            print fname + ' ' + r['blob']
+            print fname + ' ' + r['blob']
             now = time.time()
             if start > now and wait is True:
                 onTime = 'yes'
@@ -43,7 +43,7 @@ def send_requests(registry, wait, push_rand, requests, startTime, q):
                 onTime = 'failed'
             t = time.time() - t
         else:
-#            print fname + ' push'
+            print fname + ' push'
             size = r['size']
             if size > 0:
                 with open(fname, 'wb') as f:
@@ -66,7 +66,7 @@ def send_requests(registry, wait, push_rand, requests, startTime, q):
                 t = time.time() - now
 
         reg = (reg + 1) % len(registry)
-        results.append({'time': now, 'duration': t, 'onTime': onTime, 'size': size})
+        results.append({'time': now, 'duration': t, 'onTime': onTime, 'size': size, 'method': r['method']})
     os.remove(fname)
     q.put(results)
 

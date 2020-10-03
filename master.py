@@ -24,7 +24,7 @@ def send_request_get(client, payload):
     s.post("http://" + str(client) + "/up", data=json.dumps(payload), headers=headers, timeout=100)
 
 def auth(dxf, response):
-    dxf.authenticate(config('REGISTRY_USERNAME'), config('REGISTRY_PASSWORD'), response=response)
+    dxf.authenticate(config('REGISTRY_USERNAME'), config('REGISTRY_PASSWORD'), response=response, actions=["*"])
 
 def send_warmup_thread(requests, q, registry, generate_random):
     trace = {}
