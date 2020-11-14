@@ -12,13 +12,15 @@ from dxf import *
 from decouple import config
 
 app = Bottle()
+registry_username = ''
+registry_password = ''
 
 def auth(dxf, response):
-    dxf.authenticate(config('REGISTRY_USERNAME'), config('REGISTRY_PASSWORD'), response=response, actions=['*'])
+    dxf.authenticate(registry_username, registry_password, response=response, actions=['*'])
 
-def send_requests(registry, wait, push_rand, requests, startTime, q):
+def send_requests(registry, wait, push_rand, requests, startTime, q, registry_url, registry_repo):
     dxf = []
-    dxf.append(DXF(config('REGISTRY_URL'), config('REGISTRY_REPO'), auth))
+    dxf.append(DXF(registry_url, registry_repo, auth))
     results = []
     fname = str(os.getpid())
     f = open(fname, 'wb')
@@ -30,18 +32,19 @@ def send_requests(registry, wait, push_rand, requests, startTime, q):
         onTime = 'no'
         if r['method'] == 'GET':
             print fname + ' ' + r['blob']
-            now = time.time()
+            now = time.time() # now = 0
             if start > now and wait is True:
                 onTime = 'yes'
                 time.sleep(start - now)
-            t = time.time()
+            now = time.time()
             reg = random.randrange(0, len(registry))
             try:
                 for chunk in dxf[reg].pull_blob(r['blob'], chunk_size=1024*1024):
                     size += len(chunk)
-            except:
+            except Exception as e:
+                print 'error'
                 onTime = 'failed'
-            t = time.time() - t
+            t = time.time() - now # request duration = t = 0.5s
         else:
             print fname + ' push'
             size = r['size']
@@ -55,18 +58,20 @@ def send_requests(registry, wait, push_rand, requests, startTime, q):
                     f.write('\0')
                 now = time.time()
                 if start > now and wait is True:
+                    onTime= 'yes'
                     time.sleep(start - now)
                 now = time.time()
                 reg = random.randrange(0, len(registry))
                 try:
                     dgst = dxf[reg].push_blob(fname)
-                except:
+                except Exception as e:
+                    print 'error'
                     onTime = 'failed'
 
                 t = time.time() - now
 
         reg = (reg + 1) % len(registry)
-        results.append({'time': now, 'duration': t, 'onTime': onTime, 'size': size, 'method': r['method']})
+        results.append({'time': now, 'duration': t, 'onTime': onTime, 'size': size, 'method': r['method'], 'document_type': r['document_type']})
     os.remove(fname)
     q.put(results)
 
@@ -74,13 +79,18 @@ def get_messages(q):
     while True:
         msg = q.get()
         masterip = msg[0]
-
+        global registry_username
+        global registry_password
         requests = json.loads(msg[1])
         put_rand = requests[0]['random']
         threads = requests[0]['threads']
         ID = requests[0]['id']
         master = (masterip, requests[0]['port'])
         registry = requests[0]['registry']
+        registry_repo = requests[0]['registry_repo']
+        registry_username= requests[0]['registry_username']
+        registry_url= requests[0]['registry_url']
+        registry_password= requests[0]['registry_password']
         wait = requests[0]['wait']
         print master, ID, threads
         processes = []
@@ -109,7 +119,7 @@ def get_messages(q):
         for i in range(threads):
             first = registry.pop(0)
             registry.append(first)
-            p = Process(target=send_requests, args=(registry, wait, put_rand, process_requests[i], startTime, rq))
+            p = Process(target=send_requests, args=(registry, wait, put_rand, process_requests[i], startTime, rq, registry_url, registry_repo))
             p.start()
             processes.append(p)
 

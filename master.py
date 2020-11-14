@@ -28,6 +28,7 @@ def auth(dxf, response):
 
 def send_warmup_thread(requests, q, registry, generate_random):
     trace = {}
+    digests = []
     dxf = DXF(config('REGISTRY_URL'), config('REGISTRY_REPO'), auth)
     f = open(str(os.getpid()), 'wb')
     f.write('\0')
@@ -45,12 +46,15 @@ def send_warmup_thread(requests, q, registry, generate_random):
                     f.seek(request['size'] - 1)
                     f.write('\0')
 
-        try:
-            dgst = dxf.push_blob(str(os.getpid()))
-        except:
-            dgst = 'bad'
-        print request['uri'], dgst
-        trace[request['uri']] = dgst
+            try:
+                dgst = dxf.push_blob(str(os.getpid()))
+                digests.append(dgst)
+            except:
+                dgst = 'bad'
+            print request['uri'], dgst
+            trace[request['uri']] = dgst
+    if config('REGISTRY_USERNAME') == 'AWS':
+        dxf.set_alias(str(os.getpid()), *digests)
     os.remove(str(os.getpid()))
     q.put(trace)
 
@@ -153,11 +157,14 @@ def serve(port, ids, q, out_file):
         except:
             print 'exception occured in server'
             pass
-
-    with open(out_file, 'w') as f:
+    
+    if not os.path.exists(config('RESULT_DIRECTORY')):
+        os.makedirs(config('RESULT_DIRECTORY'))
+    with open(os.path.join(config('RESULT_DIRECTORY'), config('REGISTRY_URL') + "-" + out_file), 'w') as f:
         json.dump(response, f)
-    print 'results written to ' + out_file
+    print 'results written to ' + config('RESULT_DIRECTORY'), config('REGISTRY_URL') + "-" + out_file
     stats(response)
+    
 
   
 ## Get blobs
@@ -203,13 +210,15 @@ def get_requests(files, t, limit):
                     timestamp = datetime.datetime.strptime(request['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
                     duration = request['http.request.duration']
                     client = request['http.request.remoteaddr']
+                    document_type = 'manifest' if ('manifest' in uri) else 'layer'
                     r = {
                         'delay': timestamp, 
                         'uri': uri, 
                         'size': size, 
                         'method': method, 
                         'duration': duration,
-                        'client': client
+                        'client': client,
+                        'document_type': document_type
                     }
                     ret.append(r)
     ret.sort(key= lambda x: x['delay'])
@@ -241,7 +250,7 @@ def organize(requests, out_trace, numclients, client_threads, port, wait, regist
         blob = json.load(f)
 
     for i in range(numclients):
-        organized.append([{'port': port, 'id': random.getrandbits(32), 'threads': client_threads, 'wait': wait, 'registry': registries, 'random': push_rand}])
+        organized.append([{'port': port, 'id': random.getrandbits(32), 'threads': client_threads, 'wait': wait, 'registry': registries, 'random': push_rand, 'registry_repo': config('REGISTRY_REPO'), 'registry_username': config('REGISTRY_USERNAME'), 'registry_url': config('REGISTRY_URL'), 'registry_password': config('REGISTRY_PASSWORD')}])
         print organized[-1][0]['id']
     i = 0
 
@@ -249,12 +258,13 @@ def organize(requests, out_trace, numclients, client_threads, port, wait, regist
         request = {
             'delay': r['delay'],
             'duration': r['duration'],
+            'document_type': r['document_type'],
+            'method': r['method']
         }
-        if r['uri'] in blob:
+        if r['uri'] in blob and r['method'] != 'PUT':
             b = blob[r['uri']]
             if b != 'bad':
                 request['blob'] = b
-                request['method'] = 'GET'
                 if round_robin is True:
                     organized[i % numclients].append(request)
                     i += 1
@@ -262,7 +272,6 @@ def organize(requests, out_trace, numclients, client_threads, port, wait, regist
                     organized[ring.get_node(r['client'])].append(request)
         else:
             request['size'] = r['size']
-            request['method'] = 'PUT'
             if round_robin is True:
                 organized[i % numclients].append(request)
                 i += 1
@@ -280,10 +289,10 @@ def main():
 
     args = parser.parse_args()
     
-    config = file(args.input, 'r')
+    configs = file(args.input, 'r')
 
     try:
-        inputs = yaml.load(config)
+        inputs = yaml.load(configs)
     except Exception as inst:
         print 'error reading config file'
         print inst
@@ -296,20 +305,16 @@ def main():
             verbose = True
             print 'Verbose Mode'
 
-    if 'trace' not in inputs:
-        print 'trace field required in config file'
-        exit(1)
-
     trace_files = []
 
-    if 'location' in inputs['trace']:
-        location = inputs['trace']['location']
+    if config('TRACE_DIRECTORY') is not "":
+        location = config('TRACE_DIRECTORY')
         if '/' != location[-1]:
             location += '/'
-        for fname in inputs['trace']['traces']:
+        for fname in config('TRACE_FILES').split(','):
             trace_files.append(location + fname)
     else:
-        trace_files.extend(inputs['trace']['traces'])
+        trace_files.extend(config('TRACE_FILES').split(','))
 
     if verbose:
         print 'Input traces'
@@ -319,10 +324,10 @@ def main():
     limit_type = None
     limit = 0
 
-    if 'limit' in inputs['trace']:
-        limit_type = inputs['trace']['limit']['type']
+    if config('LIMIT_TYPE') is not "":
+        limit_type = config('LIMIT_TYPE')
         if limit_type in ['seconds', 'requests']:
-            limit = inputs['trace']['limit']['amount']
+            limit = config('LIMIT_AMOUNT', cast=int)
         else:
             print 'Invalid trace limit_type: limit_type must be either seconds or requests'
             print exit(1)
@@ -356,8 +361,8 @@ def main():
     if args.command == 'warmup':
         if verbose: 
             print 'warmup mode'
-        if 'threads' in inputs['warmup']:
-            threads = inputs['warmup']['threads']
+        if config('WARMUP_THREADS') is not "":
+            threads = config('WARMUP_THREADS', cast=int)
         else:
             threads = 1
         if verbose:
@@ -373,43 +378,19 @@ def main():
             print 'exiting'
             exit(1)
 
-        if 'port' not in inputs['client_info']:
-            if verbose:
-                print 'master server port not specified, assuming 8080'
-                port = 8080
-        else:
-            port = inputs['client_info']['port']
-            if verbose:
-                print 'master port: ' + str(port)
+        port = config('MASTER_PORT', cast=int)
+        
+        print 'master port: ' + str(port)
 
-        if 'threads' not in inputs['client_info']:
-            if verbose:
-                print 'client threads not specified, 1 thread will be used'
-            client_threads = 1
-        else:
-            client_threads = inputs['client_info']['threads']
-            if verbose:
-                print str(client_threads) + ' client threads'
+        client_threads = config('CLIENT_THREADS', cast=int)
+        if verbose:
+            print str(client_threads) + ' client threads'
 
-        if 'client_list' not in inputs['client_info']:
-            print 'client_list entries are required in config file'
-            exit(1)
-        else:
-            client_list = inputs['client_info']['client_list']
+        client_list = config('CLIENTS').split(',')
 
-        if 'wait' not in inputs['client_info']:
-            if verbose:
-                print 'Wait not specified, clients will not wait'
-            wait = False
-        elif inputs['client_info']['wait'] is True:
-            wait = True
-        else:
-            wait = False
+        wait = config('WAIT', cast=bool)
 
         round_robin = True
-        if 'route' in inputs['client_info']:
-            if inputs['client_info']['route'] is True:
-                round_robin = False
 
         data = organize(json_data, interm, len(client_list), client_threads, port, wait, registries, round_robin, generate_random)
         ## Perform GET
