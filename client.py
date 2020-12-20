@@ -43,6 +43,7 @@ def send_requests(registry, wait, push_rand, requests, startTime, q, registry_ur
                     size += len(chunk)
             except Exception as e:
                 print 'error'
+                print str(e)
                 onTime = 'failed'
             t = time.time() - now # request duration = t = 0.5s
         else:
@@ -66,6 +67,7 @@ def send_requests(registry, wait, push_rand, requests, startTime, q, registry_ur
                     dgst = dxf[reg].push_blob(fname)
                 except Exception as e:
                     print 'error'
+                    print str(e)
                     onTime = 'failed'
 
                 t = time.time() - now

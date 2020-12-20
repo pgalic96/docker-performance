@@ -49,12 +49,15 @@ def send_warmup_thread(requests, q, registry, generate_random):
             try:
                 dgst = dxf.push_blob(str(os.getpid()))
                 digests.append(dgst)
-            except:
+            except Exception as e:
+                print str(e)
                 dgst = 'bad'
             print request['uri'], dgst
             trace[request['uri']] = dgst
-    if config('REGISTRY_USERNAME') == 'AWS':
-        dxf.set_alias(str(os.getpid()), *digests)
+            if config('REGISTRY_USERNAME') == 'AWS':
+                if len(digests) > 10:
+                    dxf.set_alias(str(os.getpid()), *digests)
+                    digests = []
     os.remove(str(os.getpid()))
     q.put(trace)
 
@@ -307,7 +310,7 @@ def main():
 
     trace_files = []
 
-    if config('TRACE_DIRECTORY') is not "":
+    if config('TRACE_DIRECTORY') != "":
         location = config('TRACE_DIRECTORY')
         if '/' != location[-1]:
             location += '/'
@@ -324,7 +327,7 @@ def main():
     limit_type = None
     limit = 0
 
-    if config('LIMIT_TYPE') is not "":
+    if config('LIMIT_TYPE') != "":
         limit_type = config('LIMIT_TYPE')
         if limit_type in ['seconds', 'requests']:
             limit = config('LIMIT_AMOUNT', cast=int)
